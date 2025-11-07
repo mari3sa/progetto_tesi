@@ -1,0 +1,14 @@
+{
+  "constraints": [
+    {
+      "type": "node_label_included",
+      "label": "Person"
+    },
+    {
+      "type": "edge_type_between",
+      "from_label": "Person",
+      "rel_type": "child_of",
+      "to_label": "Person"
+    }
+  ]
+}

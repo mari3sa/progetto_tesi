@@ -1,11 +1,11 @@
-# app/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from .config import get_settings
-from .api.routers import test_router, graph_router
+from .api.routers import test_router, graph_router,schema_router,constraints_router
 from .database.neo4j import init_driver, close_driver
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -29,3 +29,5 @@ app.add_middleware(
 
 app.include_router(test_router)
 app.include_router(graph_router)
+app.include_router(schema_router)
+app.include_router(constraints_router)
