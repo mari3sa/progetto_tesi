@@ -22,3 +22,34 @@ def graph_stats(settings = Depends(get_settings)):
             return {"nodes": nodes, "relationships": rels}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Neo4j error: {e}")
+
+@router.get("/nodes")
+def list_nodes(settings = Depends(get_settings)):
+    """
+    Return nodes with their id, labels, and properties
+    """
+    try:
+        with get_session(settings.NEO4J_DB) as s:
+            result = s.run("""
+            MATCH (n)
+            RETURN id(n) AS id, labels(n) AS labels, properties(n) AS props
+            LIMIT 200
+        """)
+        nodes = [r.data() for r in result]
+        return {"nodes": nodes}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Neo4j error: {e}")
+
+@router.get("/relationships")
+def list_relationships(settings = Depends(get_settings)):
+    try:
+        with get_session(settings.NEO4J_DB) as session:
+            result = session.run("""
+            MATCH (a)-[r]->(b)
+            RETURN id(a) AS start, type(r) AS type, id(b) AS end, properties(r) AS props
+            LIMIT 200
+        """)
+        rels = [r.data() for r in result]
+        return {"relationships": rels}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Neo4j error: {e}")
