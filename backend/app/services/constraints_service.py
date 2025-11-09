@@ -2,10 +2,12 @@ from typing import List, Dict, Any
 from ..database.neo4j import get_session
 from ..config import get_settings
 from ..domain.models import Constraint, NodeLabelConstraint, EdgeTypeConstraint
+from ..database.manager import get_current_database_or_default
+
 
 def load_schema_from_db():
     s = get_settings()
-    with get_session(s.NEO4J_DB) as session:
+    with get_session(get_current_database_or_default()) as session:
         labels = {r["label"] for r in session.run("""
             MATCH (n) UNWIND labels(n) AS label
             RETURN DISTINCT label

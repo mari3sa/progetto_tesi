@@ -3,3 +3,4 @@ from .graph import router as graph_router
 from .schema import router as schema_router
 from .constraints import router as constraints_router
 from .rpq import router as rpq_router
+from .db import router as db_router

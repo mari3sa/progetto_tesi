@@ -1,12 +1,14 @@
 from typing import Set, Tuple
 from ..database.neo4j import get_session
 from ..config import get_settings
-from .rpq_syntax import parse_rpc  # << usa il parser formale
+from .rpq_syntax import parse_rpc  
+from ..database.manager import get_current_database_or_default
+
 
 def load_rel_types() -> Set[str]:
     s = get_settings()
-    with get_session(s.NEO4J_DB) as sess:
-        return { r["type"] for r in sess.run(
+    with get_session(get_current_database_or_default()) as session:
+        return { r["type"] for r in session.run(
             "CALL db.relationshipTypes() YIELD relationshipType AS type RETURN type") }
 
 def validate_symbols(lhs, rhs) -> list[str]:
@@ -30,7 +32,7 @@ def pairs_for_sequence(seq) -> Set[Tuple[int,int]]:
     Per ora rifiutiamo 'inv=True' (vedi validate_symbols).
     """
     s = get_settings()
-    with get_session(s.NEO4J_DB) as sess:
+    with get_session(get_current_database_or_default()) as session:
         nodes = [f"n{i}" for i in range(len(seq)+1)]
         steps = []
         for i, (inv, rel) in enumerate(seq):
@@ -40,7 +42,7 @@ def pairs_for_sequence(seq) -> Set[Tuple[int,int]]:
             steps.append(f"({nodes[i]})-[:`{rel}`]->({nodes[i+1]})")
         pattern = "-".join(steps)
         cypher = f"MATCH {pattern} RETURN id({nodes[0]}) AS u, id({nodes[-1]}) AS v"
-        return { (rec["u"], rec["v"]) for rec in sess.run(cypher) }
+        return { (rec["u"], rec["v"]) for rec in session.run(cypher) }
 
 def pairs_for_alts(alts) -> Set[Tuple[int,int]]:
     out = set()
