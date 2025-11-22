@@ -52,9 +52,16 @@ def import_constraints(file: UploadFile = File(...)):
         payload = json.loads(raw)
     finally:
         file.file.close()
-    # validazione base
+
     if "constraints" not in payload or not isinstance(payload["constraints"], list):
         raise HTTPException(400, "Formato non valido: atteso { constraints: [...] }")
-    # validazione semantica
-    result = validate_constraints(ConstraintsPayload(**payload).constraints)
-    return {"ok": result["ok"], "errors": result["errors"], "payload": payload}
+
+    result = validate_constraints(payload["constraints"])
+
+    # RITORNO COMPATIBILE CON IL FRONTEND
+    return {
+        "constraints": payload["constraints"],
+        "ok": result["ok"],
+        "errors": result["errors"]
+    }
+

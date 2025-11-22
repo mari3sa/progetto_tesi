@@ -192,26 +192,51 @@ export default function App() {
     URL.revokeObjectURL(url);
   }
 
-  function importConstraintsFromFile(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const text = evt.target.result;
-        const json = JSON.parse(text);
-        if (Array.isArray(json.constraints)) {
-          setConstraintsText(json.constraints.join("\n"));
-        } else {
-          alert("File non valido: manca la chiave 'constraints'.");
-        }
-      } catch (err) {
-        console.error(err);
-        alert("Errore nel leggere il file di vincoli.");
+ function importConstraintsFromFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+
+  reader.onload = (evt) => {
+    try {
+      const text = evt.target.result;
+      const json = JSON.parse(text);
+
+      // Caso 1 — formato diretto: { constraints: [...] }
+      if (json.constraints && Array.isArray(json.constraints)) {
+        setConstraintsText(json.constraints.join("\n"));
+        return;
       }
-    };
-    reader.readAsText(file, "utf-8");
-  }
+
+      // Caso 2 — formato da API /import:
+      // { ok: true, payload: { constraints: [...] } }
+      if (
+        json.payload &&
+        json.payload.constraints &&
+        Array.isArray(json.payload.constraints)
+      ) {
+        setConstraintsText(json.payload.constraints.join("\n"));
+        return;
+      }
+
+      // Caso 3 — formato da /save:
+      // { constraints: [...], timestamp: "...", ... }
+      if (json.model_dump && json.model_dump.constraints) {
+        setConstraintsText(json.model_dump.constraints.join("\n"));
+        return;
+      }
+
+      alert("File non valido: deve contenere { constraints: [...] } o payload.constraints.");
+    } catch (err) {
+      console.error("Errore JSON:", err);
+      alert("Errore nel leggere il file di vincoli (JSON non valido?).");
+    }
+  };
+
+  reader.readAsText(file, "utf-8");
+}
+
 
   // =========================================================
   // 8️⃣ UI
