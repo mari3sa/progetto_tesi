@@ -427,7 +427,7 @@ C4=son_of.child_of⊆grandson_of`}
           {summary && (
             <div style={styles.measuresGrid}>
               <MeasureItem
-                label="I_B(G) = μ_d"
+                label="I_B(G)"
                 description="Coerenza drastica (0 = coerente, 1 = incoerente)"
                 value={summary.mu_drastic}
               />
@@ -442,14 +442,14 @@ C4=son_of.child_of⊆grandson_of`}
                 value={summary.problematic_pairs}
               />
               <MeasureItem
-                label="I_M(G)"
+                label="I_M (G)"
                 description="Numero di sottografi minimalmente inconsistenti"
-                value={summary.I_M}
+                value={summary.minimal_problematic_graphs}
               />
               <MeasureItem
-                label="I_S(G)"
+                label="I_S (G)"
                 description="Numero di percorsi problematici minimali"
-                value={summary.I_S}
+                value={summary.minimal_problematic_paths}
               />
               <MeasureItem
                 label="I_E(G)"
