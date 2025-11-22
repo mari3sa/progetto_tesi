@@ -7,8 +7,12 @@ export default function App() {
   const [instances, setInstances] = useState([]);
   const [selectedInstance, setSelectedInstance] = useState("");
 
-  // Schema corrente (etichette nodi + tipi di relazione)
-  const [schema, setSchema] = useState({ labels: [], rel_types: [] });
+  // Schema corrente (etichette nodi + tipi di relazione + nodi)
+  const [schema, setSchema] = useState({
+    labels: [],
+    rel_types: [],
+    nodes: [],      // 🔹 NODI (name)
+  });
 
   // Testo dei vincoli RPC (multi-linea)
   const [constraintsText, setConstraintsText] = useState("");
@@ -49,7 +53,8 @@ export default function App() {
     })
       .then((r) => r.json())
       .then(() => {
-        loadSchema();
+        // 🔹 passiamo l'id per essere sicuri di usarlo in loadSchema
+        loadSchema(id);
       })
       .catch((e) => {
         console.error(e);
@@ -58,22 +63,33 @@ export default function App() {
   }
 
   // =========================================================
-  // 3️⃣ Carica schema (etichette nodi + relazioni) per il grafo
+  // 3️⃣ Carica schema (etichette nodi + relazioni + nodi) per il grafo
   // =========================================================
-  function loadSchema() {
+  function loadSchema(instanceId) {
+    const inst = instanceId || selectedInstance;
     setLoadingSchema(true);
     setError("");
-    fetch(`${API_BASE}/api/schema`)
-      .then((r) => r.json())
-      .then((data) => {
+
+    // 🔹 schema + nodi in parallelo
+    const schemaPromise = fetch(`${API_BASE}/api/schema`).then((r) => r.json());
+
+    const nodesPromise = inst
+      ? fetch(
+          `${API_BASE}/api/graph/nodes?instance=${encodeURIComponent(inst)}`
+        ).then((r) => r.json())
+      : Promise.resolve({ nodes: [] });
+
+    Promise.all([schemaPromise, nodesPromise])
+      .then(([schemaData, nodesData]) => {
         setSchema({
-          labels: data.labels || [],
-          rel_types: data.rel_types || [],
+          labels: schemaData.labels || [],
+          rel_types: schemaData.rel_types || [],
+          nodes: nodesData.nodes || [],
         });
       })
       .catch((e) => {
         console.error(e);
-        setSchema({ labels: [], rel_types: [] });
+        setSchema({ labels: [], rel_types: [], nodes: [] });
         setError("Errore nel caricare lo schema dal backend.");
       })
       .finally(() => setLoadingSchema(false));
@@ -263,7 +279,7 @@ export default function App() {
           )}
         </section>
 
-        {/* SEZIONE 2: SCHEMA (NODI + RELAZIONI) */}
+        {/* SEZIONE 2: SCHEMA (NODI + RELAZIONI + NODI NAME) */}
         <section style={styles.card}>
           <h2 style={styles.sectionTitle}>2. Schema del grafo</h2>
           <div style={styles.schemaRow}>
@@ -284,6 +300,7 @@ export default function App() {
                 </ul>
               )}
             </div>
+
             <div style={styles.schemaCol}>
               <h3 style={styles.schemaTitle}>Tipi di relazione</h3>
               {schema.rel_types.length === 0 ? (
@@ -296,6 +313,24 @@ export default function App() {
                   {schema.rel_types.map((t) => (
                     <li key={t} style={styles.tag}>
                       {t}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {/* 🔹 NODI (name) */}
+            <div style={styles.schemaCol}>
+              <h3 style={styles.schemaTitle}>Nodi (name)</h3>
+              {(!schema.nodes || schema.nodes.length === 0) ? (
+                <p style={styles.helperText}>
+                  Nessun nodo caricato (seleziona un&apos;istanza).
+                </p>
+              ) : (
+                <ul style={styles.tagList}>
+                  {schema.nodes.map((n, idx) => (
+                    <li key={`${n}-${idx}`} style={styles.tag}>
+                      {n}
                     </li>
                   ))}
                 </ul>
@@ -357,7 +392,10 @@ C4=son_of.child_of⊆grandson_of`}
             </button>
 
             <div style={styles.fileControls}>
-              <button style={styles.secondaryButton} onClick={exportConstraintsToFile}>
+              <button
+                style={styles.secondaryButton}
+                onClick={exportConstraintsToFile}
+              >
                 Salva vincoli su file
               </button>
               <label style={styles.fileLabel}>
@@ -472,7 +510,8 @@ const styles = {
     minHeight: "100vh",
     background: "#f5f7fb",
     padding: "24px",
-    fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    fontFamily:
+      "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     color: "#1f2933",
   },
   container: {
@@ -617,7 +656,6 @@ const styles = {
     padding: "8px 10px",
     borderRadius: "8px",
     border: "1px solid #d1d5db",
-    fontFamily: "monospace",
     fontSize: "13px",
     resize: "vertical",
   },
@@ -709,4 +747,3 @@ const styles = {
     color: "#6b7280",
   },
 };
-
