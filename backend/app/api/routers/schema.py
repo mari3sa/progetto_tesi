@@ -1,34 +1,26 @@
-from fastapi import APIRouter, Depends, HTTPException
-from ...config import get_settings
+from fastapi import APIRouter, HTTPException
 from ...database.neo4j import get_session
+from ...database.manager import get_current_database_or_default
 
 router = APIRouter(prefix="/api/schema", tags=["schema"])
 
 @router.get("")
-def get_schema(settings = Depends(get_settings)):
+def get_schema(db: str = None):
+    """Ritorna labels e relazioni del grafo."""
     try:
-        with get_session(settings.NEO4J_DB) as s:
-            # labels
-            labels = [r["label"] for r in s.run("""
-                MATCH (n) UNWIND labels(n) AS label
-                RETURN DISTINCT label ORDER BY label
-            """)]
-            # relationship types
-            rel_types = [r["type"] for r in s.run("""
-                CALL db.relationshipTypes() YIELD relationshipType AS type
-                RETURN type ORDER BY type
-            """)]
-            # proprietà per label (opzionale ma utile in futuro)
-            props_by_label = {}
-            for l in labels:
-                keys = [r["k"] for r in s.run(f"""
-                    MATCH (n:`{l}`)
-                    WITH DISTINCT keys(n) AS ks
-                    UNWIND ks AS k
-                    RETURN DISTINCT k
-                    ORDER BY k
-                """)]
-                props_by_label[l] = keys
-            return {"labels": labels, "rel_types": rel_types, "props_by_label": props_by_label}
+        if db is None:
+            db = get_current_database_or_default()
+
+        with get_session(db) as session:
+            labels = [r["label"] for r in session.run(
+                "CALL db.labels() YIELD label RETURN label"
+            )]
+
+            rel_types = [r["type"] for r in session.run(
+                "CALL db.relationshipTypes() YIELD relationshipType AS type RETURN type"
+            )]
+
+        return {"labels": labels, "rel_types": rel_types}
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Neo4j error: {e}")
+        raise HTTPException(500, f"Errore Neo4j: {e}")

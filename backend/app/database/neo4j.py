@@ -1,34 +1,38 @@
-# app/db/neo4j.py
-from neo4j import GraphDatabase, Session
-from typing import Optional
-from .manager import get_active_profile
+from neo4j import GraphDatabase
+from .manager import get_current_database_or_default
 
-_driver = None  # driver Neo4j globale (riusato)
+# Driver globale
+_driver = None
 
-def init_driver(uri: str, user: str, password: str) -> None:
-    """Inizializza (o re-inizializza) il driver globale."""
-    global _driver
-    if _driver is not None:
-        _driver.close()
-    _driver = GraphDatabase.driver(uri, auth=(user, password))
-
-def init_driver_from_active_profile() -> None:
-    """Inizializza il driver usando il profilo attivo (da manager)."""
-    prof = get_active_profile()
-    init_driver(prof["uri"], prof["user"], prof["password"])
-
-def get_session(database: str) -> Session:
-    """Ritorna una sessione sul database richiesto.
-    Se il driver non è inizializzato, usa il profilo attivo per inizializzarlo.
-    """
+def init_driver(uri: str, user: str, password: str):
     global _driver
     if _driver is None:
-        init_driver_from_active_profile()
-    return _driver.session(database=database)
+        _driver = GraphDatabase.driver(uri, auth=(user, password))
 
-def close_driver() -> None:
-    """Chiude il driver globale."""
+def get_driver():
+    """
+    Crea un driver per l'istanza corrente.
+    Usa sempre le credenziali del profilo .env.
+    """
+    from ..config import get_settings
+    settings = get_settings()
+    return GraphDatabase.driver(
+        settings.NEO4J_URI,
+        auth=(settings.NEO4J_USER, settings.NEO4J_PASSWORD)
+    )
+
+def get_session(database: str = None):
+    """
+    Ritorna una sessione collegata al database attivo.
+    """
+    if database is None:
+        database = get_current_database_or_default()
+
+    driver = get_driver()
+    return driver.session(database=database)
+
+def close_driver():
     global _driver
-    if _driver is not None:
+    if _driver:
         _driver.close()
         _driver = None
