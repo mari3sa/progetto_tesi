@@ -1,3 +1,14 @@
+"""
+Funzioni di supporto per la valutazione di vincoli RPQ, inclusa
+l’espansione di parentesi semplici, la validazione sintattica dei simboli,
+la generazione delle coppie (u, v) ammesse da una sequenza di relazioni
+e la verifica dell’inclusione LHS ⊆ RHS.
+
+Le query sono eseguite direttamente su Neo4j tramite sessioni aperte
+sul database attivo.
+"""
+
+
 from typing import Set, Tuple
 import re
 
@@ -7,10 +18,7 @@ from .rpq_syntax import parse_rpc
 from ..database.manager import get_current_database_or_default
 
 
-def load_rel_types() -> Set[str]:
-    """
-    (Per ora non usata nella validazione, ma la teniamo se serve in futuro)
-    """
+'''def load_rel_types() -> Set[str]:
     s = get_settings()
     with get_session(get_current_database_or_default()) as session:
         return {
@@ -18,16 +26,15 @@ def load_rel_types() -> Set[str]:
             for r in session.run(
                 "CALL db.relationshipTypes() YIELD relationshipType AS type RETURN type"
             )
-        }
+        }'''
 
 
 def validate_symbols(lhs_alts, rhs_alts):
     """
-    Ora controlla SOLO la sintassi (niente simboli vuoti),
-    NON controlla più che le relazioni esistano nel grafo.
-
-    Se una relazione non esiste, la relativa RPQ restituisce ∅,
-    e questo produce le violazioni come da teoria delle RPC.
+    Controlla solo la sintassi dei simboli nelle RPQ:
+    nessun simbolo deve essere vuoto.
+    Non verifica l’esistenza nel grafo: una relazione inesistente
+    produce semplicemente insiemi vuoti.
     """
     errors = []
 
@@ -43,7 +50,6 @@ def validate_symbols(lhs_alts, rhs_alts):
 # Espansione semplice delle parentesi nella forma:
 #   X.(A|B) oppure X.(A∣B)
 # → X.A∣X.B
-# (niente annidamento complesso, ma sufficiente per C2)
 # --------------------------------------------------------
 def _expand_simple_parentheses(constraint_str: str) -> str:
     """
@@ -79,7 +85,7 @@ def _expand_simple_parentheses(constraint_str: str) -> str:
 
 def pairs_for_sequence(seq):
     """
-    Ritorna tutte le coppie (u,v) tali che esiste un cammino
+    Restituisce tutte le coppie (u,v) tali che esiste un cammino
     u --R1--> x1 --R2--> x2 ... --Rn--> v
     per la sequenza 'seq'.
 
@@ -108,6 +114,7 @@ def pairs_for_sequence(seq):
     return out
 
 
+#Calcola l’unione delle coppie prodotte da più alternative RPQ.
 def pairs_for_alts(alts) -> Set[Tuple[int, int]]:
     out: Set[Tuple[int, int]] = set()
     for seq in alts:
@@ -117,12 +124,18 @@ def pairs_for_alts(alts) -> Set[Tuple[int, int]]:
 
 def check_inclusion(constraint_str: str) -> dict:
     """
-    Endpoint logico per /api/rpq/check
+    Valuta un vincolo RPQ della forma:
 
-    constraint_str: stringa tipo
-      "C2=child_of.(brother_of∣sister_of)⊆nephew_of∣niece_of"
+        C2=child_of.(brother_of∣sister_of)⊆nephew_of∣niece_of
+
+    Restituisce:
+      - ok: True/False
+      - name: nome del vincolo (es. C2)
+      - lhs_pairs, rhs_pairs: cardinalità dei due insiemi
+      - violations: lista delle coppie che violano l’inclusione
+      - violations_count
     """
-    # 0) espandi eventuali parentesi semplici
+    # Espansione X.(A∣B)
     expanded = _expand_simple_parentheses(constraint_str)
 
     # 1) parsing rigoroso RPC

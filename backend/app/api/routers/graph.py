@@ -1,3 +1,14 @@
+"""
+Endpoint dedicati all’esplorazione del grafo archiviato nel database Neo4j.
+
+Il modulo fornisce funzioni per:
+- generare un’immagine del grafo (nodi + relazioni),
+- recuperare l’elenco dei nodi presenti.
+
+Il grafo viene ricostruito dinamicamente interrogando il database selezionato.
+Il disegno dell’immagine utilizza NetworkX e Matplotlib.
+"""
+
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from ...database.manager import set_active_db, get_current_database_or_default
@@ -10,15 +21,12 @@ import matplotlib
 matplotlib.use("Agg")  # backend sicuro per server/headless
 import matplotlib.pyplot as plt
 
+# Endpoint per la generazione e consultazione del grafo.
 router = APIRouter(prefix="/api/graph", tags=["graph"])
 
 
 @router.get("/image")
 def get_graph_image(instance: str = Query(...)):
-    """
-    Genera e restituisce l’immagine del grafo Neo4j,
-    usando la proprietà `name` dei nodi come etichetta.
-    """
 
     # 1) Seleziona database
     try:
@@ -42,11 +50,13 @@ def get_graph_image(instance: str = Query(...)):
 
             nodes = [r["id"] for r in node_rows]
 
+            # Mappa: id → etichetta da visualizzare.
             labels_map = {
                 r["id"]: (r["name"] if r["name"] else str(r["id"]))
                 for r in node_rows
             }
 
+            # Lettura relazioni con tipo e nodi estremi.
             edges = [
                 (r["a"], r["b"], r["type"])
                 for r in s.run("""
@@ -99,12 +109,11 @@ def get_graph_image(instance: str = Query(...)):
     return StreamingResponse(buf, media_type="image/png")
 
 
+ 
+#Restituisce la lista dei nodi del grafo corrente (proprietà name).
 @router.get("/nodes")
 def get_graph_nodes(instance: str = Query(...)):
-    """
-    Restituisce la lista dei nodi del grafo corrente (proprietà name).
-    """
-
+   
     try:
         set_active_db(instance)
     except Exception:
@@ -112,6 +121,7 @@ def get_graph_nodes(instance: str = Query(...)):
 
     db = get_current_database_or_default()
 
+    # Recupero nodi dal database Neo4j.
     try:
         with get_session(db) as s:
             node_rows = list(
@@ -123,6 +133,7 @@ def get_graph_nodes(instance: str = Query(...)):
     except Exception as e:
         raise HTTPException(500, f"Errore Neo4j: {e}")
 
+    # Conversione in lista leggibile (nome o id).
     nodes = [
         (r["name"] if r["name"] else str(r["id"]))
         for r in node_rows

@@ -1,4 +1,17 @@
-# app/services/measures.py
+"""
+Funzioni per il calcolo delle misure di inconsistenza derivate dai vincoli RPQ.
+
+Il modulo analizza una lista di vincoli (nella sintassi RPC), calcola tutte
+le coppie problematiche u→v presenti nel grafo e misura diverse forme di
+inconsistenza strutturale:
+- violazioni dei vincoli,
+- insiemi minimali di archi problematici (MIMS),
+- percorsi testimoni u→v,
+- misure standard (I_B, I_C, I_P, I_M, I_E, …).
+
+Il calcolo avviene interrogando direttamente il database attivo, senza
+presupporre che il grafo stia interamente in memoria.
+"""
 
 from typing import List, Dict, Any, Set, Tuple
 
@@ -12,16 +25,16 @@ from ..database.neo4j import get_session
 from ..database.manager import get_current_database_or_default
 
 
-# ---------------------------------------------------------------
+
 # Helper: trova 1 percorso testimone u -> v per una sequenza RPQ
-# ---------------------------------------------------------------
 def one_witness_path_for_sequence(
     seq, u_id: int, v_id: int
 ) -> List[Tuple[int, int, str]]:
     """
-    Ritorna una lista di archi (u,v,label) che formano un cammino u->...->v
-    per la sequenza di relazioni 'seq'. Se non trovato, ritorna [].
+    Restituisce un cammino u→…→v che rispetta esattamente la sequenza 'seq'.
+    Se non esiste, ritorna [].
     """
+
     # Per semplicità non gestiamo inverse
     if any(inv for inv, _ in seq):
         return []
@@ -46,44 +59,33 @@ def one_witness_path_for_sequence(
         if not row:
             return []
 
-        # ricostruisci archi (n_i, n_{i+1}, label_i)
+        # Ricostruzione lista archi del cammino testimone
         return [
             (row[f"n{i}"], row[f"n{i+1}"], rel)
             for i, (_, rel) in enumerate(seq)
         ]
 
 
-# ---------------------------------------------------------------
 # Funzione principale: calcola tutte le misure di inconsistenza
-# ---------------------------------------------------------------
 def compute_measures(constraints: List[str]) -> Dict[str, Any]:
     """
-    constraints = lista di stringhe RPC, ad es.:
-
-      "C1=child_of⊆son_of∣daughter_of"
-      "C2=child_of.(brother_of∣sister_of)⊆nephew_of∣niece_of"
-      "C3=child_of.child_of⊆grandson_of∣granddaughter_of"
-      "C4=son_of.child_of⊆grandson_of"
-
-    Ritorna:
-      - summary: tutte le misure globali
-      - details: info per vincolo + qualche path
+    Esegue il calcolo completo delle misure a partire da una lista
+    di vincoli RPC.
+    Ritorna sia il riepilogo globale sia i dettagli per singolo vincolo.
     """
 
     db = get_current_database_or_default()
 
-    # insiemi globali
+    # Insiemi globali per tutte le violazioni trovate
     all_problem_pairs: Set[Tuple[int, int]] = set()
     all_witness_paths: List[List[Tuple[int, int, str]]] = []  # TUTTI i cammini testimoni
 
     violated_count = 0
     per_constraint = []
 
-    # ===============================================================
-    # PROCESSA TUTTI I VINCOLI
-    # ===============================================================
+    # Analisi di ogni vincolo RPC
     for raw in constraints:
-        # espandi eventuali parentesi semplici
+        # Espansione di parentesi semplici per uniformare il parsing
         raw_expanded = _expand_simple_parentheses(raw)
 
         name, lhs_alts, rhs_alts = parse_rpc(raw_expanded)
@@ -101,7 +103,7 @@ def compute_measures(constraints: List[str]) -> Dict[str, Any]:
             )
             continue
 
-        # calcola LHS e RHS (unione delle alternative)
+        # Calcolo coppie LHS e RHS come unioni delle alternative
         lhs_pairs: Set[Tuple[int, int]] = set()
         for seq in lhs_alts:
             lhs_pairs |= pairs_for_sequence(seq)
@@ -117,12 +119,11 @@ def compute_measures(constraints: List[str]) -> Dict[str, Any]:
             violated_count += 1
             all_problem_pairs |= violations
 
-            # estrai UN percorso testimone per ciascuna coppia violata
+            # Per ogni coppia violata, estrae un percorso testimone
             for (u, v) in violations:
                 for seq in lhs_alts:
                     path = one_witness_path_for_sequence(seq, u, v)
                     if path:
-                        # lo teniamo sempre (serve per I_E(G))
                         all_witness_paths.append(path)
                         break
 
@@ -136,15 +137,12 @@ def compute_measures(constraints: List[str]) -> Dict[str, Any]:
             }
         )
 
-    # ===============================================================
     # COSTRUZIONE DEI MIMS (sottografi minimalmente inconsistenti)
-    # ===============================================================
-    # ogni path → insieme di archi
     path_sets = [frozenset(p) for p in all_witness_paths if p]
 
     minimal_sets: List[Set[Tuple[int, int, str]]] = []
     for i, S in enumerate(path_sets):
-        # S è minimale se NON esiste un T (j != i) con T ⊂ S
+        # S è minimale se nessun T più piccolo è sottoinsieme di S
         is_minimal = True
         for j, T in enumerate(path_sets):
             if i == j:
@@ -155,9 +153,8 @@ def compute_measures(constraints: List[str]) -> Dict[str, Any]:
         if is_minimal:
             minimal_sets.append(S)
 
-    # ===============================================================
+    
     # COSTRUZIONE I_S(G): percorsi problematici minimali
-    # ===============================================================
     path_list = [tuple(p) for p in all_witness_paths]
 
     minimal_paths = []
@@ -176,9 +173,8 @@ def compute_measures(constraints: List[str]) -> Dict[str, Any]:
 
     I_S = len(minimal_paths)  # I_S(G)
 
-    # ===============================================================
+    
     # ARCHI / ETICHETTE / NODI PROBLEMATICI
-    # ===============================================================
     prob_edges: Set[Tuple[int, int, str]] = set()
     for path in all_witness_paths:
         prob_edges |= set(path)
@@ -190,9 +186,7 @@ def compute_measures(constraints: List[str]) -> Dict[str, Any]:
         prob_vertices.add(u)
         prob_vertices.add(v)
 
-    # ===============================================================
-    # MISURE STANDARD (come nel paper)
-    # ===============================================================
+    # MISURE STANDARD 
     mu_d = 1 if violated_count > 0 else 0          # I_B(G)
     mu_vc = violated_count                         # I_C(G)
     P = len(all_problem_pairs)                     # I_P(G)
@@ -201,17 +195,16 @@ def compute_measures(constraints: List[str]) -> Dict[str, Any]:
     L_p = len(prob_labels)                         # I_L(G)
     V_p = len(prob_vertices)                       # I_V(G)
 
-    # ===============================================================
     # MISURE AGGIUNTIVE: I(E-), I(E+), I(V-)
-    # ===============================================================
+    
 
-    # 🔹 I(E-) (come PRIMA, uguale a I_M(G) nei tuoi esempi)
+    #I(E-)
     I_E_minus = I_M
 
-    # 🔹 I(E+) = numero coppie problematiche (una correzione per ogni coppia)
+    #I(E+) = numero coppie problematiche (una correzione per ogni coppia)
     I_E_plus = P
 
-    # 🔹 I(V-) = cover di vertici (approssimata greedy)
+    #I(V-) = cover di vertici (approssimata greedy)
     freq = {}
     for u, v in all_problem_pairs:
         freq[u] = freq.get(u, 0) + 1
@@ -220,6 +213,7 @@ def compute_measures(constraints: List[str]) -> Dict[str, Any]:
     pairs_left = set(all_problem_pairs)
     removed_vertices: Set[int] = set()
 
+    # Scelta greedy del vertice più frequente
     while pairs_left:
         v_star = max(freq, key=freq.get)
         removed_vertices.add(v_star)
@@ -236,9 +230,8 @@ def compute_measures(constraints: List[str]) -> Dict[str, Any]:
 
     I_V_minus = len(removed_vertices)
 
-    # ===============================================================
-    # RITORNO RISULTATO
-    # ===============================================================
+    
+    #RISULTATO
     return {
         "summary": {
             "mu_drastic": mu_d,                      # I_B(G)

@@ -1,4 +1,16 @@
-# app/services/rpq_syntax.py
+"""
+Funzioni di tokenizzazione, parsing e interpretazione della sintassi RPQ/RPC.
+
+Il modulo fornisce:
+- un tokenizer per trasformare un’espressione RPQ in token,
+- un parser ricorsivo per costruire le alternative (sequenze di relazioni),
+- il parsing completo di un vincolo RPC (nome, LHS, RHS),
+- il supporto alla concatenazione implicita e agli operatori OR,
+- controlli sintattici di base.
+
+Le RPQ risultano rappresentate come sequenze di coppie (inv, label),
+mentre un vincolo RPC è scomposto nelle due parti LHS ⊆ RHS.
+"""
 
 from typing import List, Tuple
 
@@ -8,9 +20,7 @@ from typing import List, Tuple
 Atom = Tuple[bool, str]
 
 
-# ===========================
 # TOKENIZER
-# ===========================
 
 Token = Tuple[str, str]  # (kind, value)
 
@@ -74,14 +84,11 @@ def _tokenize(expr: str) -> List[Token]:
         # qualunque altro carattere non riconosciuto → errore
         raise ValueError(f"Carattere non valido nella RPQ: '{ch}'")
 
-    tokens.append(("EOF", ""))  # sentinella
+    tokens.append(("EOF", ""))  
     return tokens
 
 
-# ===========================
 # PARSER RPQ
-# ===========================
-
 class _RPQParser:
     """
     Parser ricorsivo per un'espressione RPQ.
@@ -204,10 +211,7 @@ def parse_rpq(expr: str) -> List[List[Atom]]:
     return parser.parse_rpq()
 
 
-# ===========================
 # PARSER DI UN VINCOLO RPC
-# ===========================
-
 def parse_rpc(constraint_str: str) -> Tuple[str, List[List[Atom]], List[List[Atom]]]:
     """
     Parsea un vincolo RPC del tipo:
