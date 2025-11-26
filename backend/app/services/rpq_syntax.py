@@ -6,6 +6,7 @@ Il modulo fornisce:
 - un parser ricorsivo per costruire le alternative (sequenze di relazioni),
 - il parsing completo di un vincolo RPC (nome, LHS, RHS),
 - il supporto alla concatenazione implicita e agli operatori OR,
+- il supporto all’operatore Kleene star *,
 - controlli sintattici di base.
 
 Le RPQ risultano rappresentate come sequenze di coppie (inv, label),
@@ -30,8 +31,9 @@ def _tokenize(expr: str) -> List[Token]:
     Trasforma una stringa RPQ in una lista di token.
     Supporta:
       - parentesi: ( )
-      - OR: |  (anche '∣' che viene normalizzato a '|')
-      - concatenazione: '.' o implicita per adiacenza
+      - OR: |  (anche '∣' normalizzato a '|')
+      - concatenazione: '.' o implicita
+      - Kleene star: *
       - identificatori: child_of, grandson_of, ecc.
       - ignora eventuale ';' finale
     """
@@ -48,7 +50,6 @@ def _tokenize(expr: str) -> List[Token]:
             continue
 
         if ch == ';':
-            # ignora tutto ciò che viene dopo il ';'
             break
 
         if ch == '(':
@@ -71,7 +72,12 @@ def _tokenize(expr: str) -> List[Token]:
             i += 1
             continue
 
-        # identificatore (relazione) – lettere, cifre, underscore
+        if ch == '*':
+            tokens.append(("STAR", "*"))
+            i += 1
+            continue
+
+        # identificatore
         if ch.isalpha() or ch == '_':
             start = i
             i += 1
@@ -81,10 +87,9 @@ def _tokenize(expr: str) -> List[Token]:
             tokens.append(("IDENT", ident))
             continue
 
-        # qualunque altro carattere non riconosciuto → errore
         raise ValueError(f"Carattere non valido nella RPQ: '{ch}'")
 
-    tokens.append(("EOF", ""))  
+    tokens.append(("EOF", ""))
     return tokens
 
 
@@ -93,7 +98,7 @@ class _RPQParser:
     """
     Parser ricorsivo per un'espressione RPQ.
 
-    Ritorna una lista di alternative:
+    Restituisce una lista di alternative:
         List[List[Atom]]
 
     dove ogni alternativa è una sequenza di (inv, label).
@@ -120,7 +125,6 @@ class _RPQParser:
     # RPQ := ALT
     def parse_rpq(self) -> List[List[Atom]]:
         alts = self._parse_alt()
-        # alla fine dobbiamo essere a EOF (o RPAREN consumata da chi ci chiama)
         if self._peek()[0] not in ("EOF", "RPAREN"):
             kind, val = self._peek()
             raise ValueError(f"Token inatteso '{val}' ({kind}) alla fine della RPQ")
@@ -136,7 +140,6 @@ class _RPQParser:
         return alts
 
     # CONCAT := FACTOR ( (DOT)? FACTOR )*
-    # concatenazione esplicita con '.' o implicita per adiacenza
     def _parse_concat(self) -> List[List[Atom]]:
         alts = self._parse_factor()
 
@@ -144,29 +147,37 @@ class _RPQParser:
             kind, _ = self._peek()
 
             if kind == "DOT":
-                # concatenazione esplicita
                 self._advance()
                 rhs = self._parse_factor()
                 alts = self._concat_alts(alts, rhs)
+
             elif kind in ("IDENT", "LPAREN"):
                 # concatenazione implicita
                 rhs = self._parse_factor()
                 alts = self._concat_alts(alts, rhs)
+
             else:
                 break
 
         return alts
 
-    # FACTOR := IDENT | '(' ALT ')'
+    # FACTOR := BASE ('STAR')?
     def _parse_factor(self) -> List[List[Atom]]:
+        base = self._parse_base()
+
+        if self._peek()[0] == "STAR":
+            self._advance()
+            return self._kleene_star(base)
+
+        return base
+
+    # BASE := IDENT | '(' ALT ')'
+    def _parse_base(self) -> List[List[Atom]]:
         kind, val = self._peek()
 
         if kind == "IDENT":
             self._advance()
-            # eventuale supporto rel^-1 in futuro; per ora inv = False
-            inv = False
-            label = val
-            return [[(inv, label)]]
+            return [[(False, val)]]
 
         if kind == "LPAREN":
             self._advance()
@@ -191,54 +202,66 @@ class _RPQParser:
                 out.append(a + b)
         return out
 
+    def _kleene_star(self, alts: List[List[Atom]], max_repeat: int = 3) -> List[List[Atom]]:
+        """
+        Kleene star finito:
+         - epsilon
+         - alts
+         - alts.alts
+         - alts.alts.alts
+        fino a max_repeat iterazioni
+        """
+
+        result: List[List[Atom]] = [[]]  # epsilon
+
+        current = alts
+        for _ in range(1, max_repeat + 1):
+            result.extend(current)
+            nxt = []
+            for seq in current:
+                for a in alts:
+                    nxt.append(seq + a)
+            current = nxt
+
+        return result
+
 
 def parse_rpq(expr: str) -> List[List[Atom]]:
     """
-    Parsea una sola RPQ (senza nome, solo parte sinistra o destra di un vincolo).
-    Ritorna: lista di alternative, ciascuna è una lista di (inv, label).
-
-    Esempi accettati:
-      - child_of
-      - child_of.child_of
-      - child_of (brother_of|sister_of)
-      - (child_of.child_of)|(son_of.daughter_of)
+    Parsea una sola RPQ (senza nome).
+    Ritorna una lista di alternative, ciascuna una lista di (inv, label).
     """
-    expr = expr.strip()
-    # normalizza OR unicode
-    expr = expr.replace("∣", "|")
+    expr = expr.strip().replace("∣", "|")  # normalizza OR
     tokens = _tokenize(expr)
     parser = _RPQParser(tokens)
     return parser.parse_rpq()
 
 
-# PARSER DI UN VINCOLO RPC
+# PARSER VINCOLI RPC
 def parse_rpc(constraint_str: str) -> Tuple[str, List[List[Atom]], List[List[Atom]]]:
     """
-    Parsea un vincolo RPC del tipo:
+    Parsea un vincolo RPC:
 
         C1 = child_of ⊆ son_of|daughter_of
-        C_2: child_of.(brother_of|sister_of) ⊆ nephew_of|niece_of;
-        C_3 = child_of.child_of <= grandson_of|granddaughter_of
+        C_2: child_of.(brother_of|sister_of) ⊆ nephew_of|niece_of
+        C_3 = (a|b)*.c <= d*|e
 
-    Ritorna:
-        (name, lhs_alternatives, rhs_alternatives)
-
-    dove lhs_alternatives / rhs_alternatives sono liste di sequenze:
-        List[List[(inv: bool, label: str)]]
+    Restituisce:
+        (name, lhs_alts, rhs_alts)
     """
     s = constraint_str.strip()
 
     if not s:
         raise ValueError("Vincolo vuoto")
 
-    # togli eventuale ';' finale grossolano
+    # rimuove eventuale ; finale
     if s.endswith(";"):
         s = s[:-1].strip()
 
-    # normalizza simbolo di inclusione
-    s = s.replace("<=", "⊆")  # supporta anche '<=' come in molti esempi
+    # normalizza <= in ⊆
+    s = s.replace("<=", "⊆")
 
-    # separa nome e resto: cerchiamo '=' oppure ':'
+    # Nome del vincolo
     eq_pos = s.find("=")
     colon_pos = s.find(":")
 
@@ -254,17 +277,15 @@ def parse_rpc(constraint_str: str) -> Tuple[str, List[List[Atom]], List[List[Ato
     body = s[name_end + 1 :].strip()
 
     if not name:
-        raise ValueError("Nome del vincolo mancante (es. 'C1', 'C_2', ecc.)")
+        raise ValueError("Nome del vincolo mancante")
 
-    # split su '⊆'
     parts = body.split("⊆")
     if len(parts) != 2:
-        raise ValueError("Il vincolo deve contenere esattamente un simbolo '⊆' o '<='")
+        raise ValueError("Il vincolo deve contenere esattamente un simbolo '⊆'")
 
     lhs_str = parts[0].strip()
     rhs_str = parts[1].strip()
 
-    # togli eventuale ';' finale su RHS
     if rhs_str.endswith(";"):
         rhs_str = rhs_str[:-1].strip()
 
