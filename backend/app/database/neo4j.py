@@ -29,7 +29,7 @@ def get_driver():
     )
 
 #Restituisce una sessione collegata al database attivo.
- #Se il nome non è specificato, viene usato quello salvato nello stato.
+#Se il nome non è specificato, viene usato quello salvato nello stato.
 def get_session(database: str = None):
     if database is None:
         database = get_current_database_or_default()
