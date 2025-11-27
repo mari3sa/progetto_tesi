@@ -13,6 +13,30 @@ import useMeasures from "./hooks/useMeasures";
 
 const API_BASE = "http://127.0.0.1:8000";
 
+/**
+ * Selezione dinamica delle misure RPC
+ *
+ * L'interfaccia permette all'utente di scegliere quali misure di inconsistenza calcolare.
+ * Le misure disponibili sono definite in `measureOptions.
+ *
+ * Lo stato `selectedMeasures` contiene l'elenco delle misure richieste.
+ * Quando l’utente clicca "Calcola misure", il frontend invia al backend:
+ *
+ *   {
+ *     constraints: [...],
+ *     requested_measures: selectedMeasures
+ *   }
+ *
+ * Il backend calcola solo le misure incluse in `requested_measures`.
+ *
+ * La sezione dei risultati mostra dinamicamente solo le misure selezionate.
+ *
+ * Vantaggi:
+ * - Migliori prestazioni su grafi grandi
+ * - UI più pulita e coerente con le scelte dell'utente
+ * - Facile estendere o aggiungere nuove misure
+ */
+
 export default function App() {
   // Lista istanze
   const instances = useInstances();
@@ -64,6 +88,55 @@ export default function App() {
     () => getUnknownSymbols(constraintsArray, schema.rel_types),
     [constraintsArray, schema.rel_types]
   );
+
+  const measureOptions = [
+  { id: "mu_drastic", label: "I_B(G): misura drastica" },
+  { id: "mu_violated_constraints", label: "I_C(G): vincoli violati" },
+  { id: "problematic_pairs", label: "I_P(G): coppie problematiche" },
+  { id: "minimal_problematic_graphs", label: "I_M(G): MIMS" },
+  { id: "minimal_problematic_paths", label: "I_S(G): percorsi minimali" },
+  { id: "problematic_edges", label: "I_E(G): archi problematici" },
+  { id: "problematic_labels", label: "I_L(G): etichette problematiche" },
+  { id: "problematic_vertices", label: "I_V(G): vertici problematici" },
+  { id: "I_E_minus", label: "I(E⁻)(G): rimozione archi" },
+  { id: "I_E_plus", label: "I(E⁺)(G): aggiunta archi" },
+  { id: "I_V_minus", label: "I(V⁻)(G): rimozione vertici" },
+];
+
+// Stato misure richieste
+const [selectedMeasures, setSelectedMeasures] = useState(
+  measureOptions.map((m) => m.id) // di default: tutte selezionate
+);
+
+function getMeasureDescription(id) {
+  switch (id) {
+    case "mu_drastic":
+      return "Misura drastica (0 = consistente, 1 = inconsistente)";
+    case "mu_violated_constraints":
+      return "Numero di vincoli RPC violati";
+    case "problematic_pairs":
+      return "Numero di coppie problematiche";
+    case "minimal_problematic_graphs":
+      return "Numero di sottografi minimalmente inconsistenti (MIMS)";
+    case "minimal_problematic_paths":
+      return "Numero di percorsi problematici minimali";
+    case "problematic_edges":
+      return "Numero di archi problematici";
+    case "problematic_labels":
+      return "Numero di etichette problematiche";
+    case "problematic_vertices":
+      return "Numero di vertici problematici";
+    case "I_E_minus":
+      return "Archi da rimuovere per ristabilire la coerenza (I(E⁻))";
+    case "I_E_plus":
+      return "Archi da aggiungere per ristabilire la coerenza (I(E⁺))";
+    case "I_V_minus":
+      return "Vertici da rimuovere per ristabilire la coerenza (I(V⁻))";
+    default:
+      return "";
+  }
+}
+
 
   // ---------------------------------------------------------
   // UI
@@ -227,11 +300,31 @@ C4=son_of.child_of⊆grandson_of`}
             </div>
           )}
 
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+            {measureOptions.map((m) => (
+              <label key={m.id} style={{ display: "flex", gap: "6px", fontSize: "13px" }}>
+                <input
+                  type="checkbox"
+                  checked={selectedMeasures.includes(m.id)}
+                  onChange={() => {
+                    setSelectedMeasures((prev) =>
+                      prev.includes(m.id)
+                        ? prev.filter((x) => x !== m.id)
+                        : [...prev, m.id]
+                    );
+                  }}
+                />
+                {m.label}
+              </label>
+            ))}
+          </div>
+
+
           <div style={styles.buttonRow}>
             {/* Calcolo misure */}
             <button
               style={styles.primaryButton}
-              onClick={() => computeMeasures(constraintsArray)}
+              onClick={() => computeMeasures(constraintsArray, selectedMeasures)}
               disabled={loadingMeasures}
             >
               {loadingMeasures ? "Calcolo in corso..." : "Calcola misure"}
@@ -259,80 +352,34 @@ C4=son_of.child_of⊆grandson_of`}
           </div>
         </section>
 
-        {/* SEZIONE 4: RISULTATI */}
-        <section style={styles.card}>
-          <h2 style={styles.sectionTitle}>4. Misure di inconsistenza</h2>
+       {/* SEZIONE 4: RISULTATI */}
+<section style={styles.card}>
+  <h2 style={styles.sectionTitle}>4. Misure di inconsistenza</h2>
 
-          {error && <div style={styles.errorBox}>{error}</div>}
+  {error && <div style={styles.errorBox}>{error}</div>}
 
-          {!summary && !error && (
-            <p style={styles.helperText}>
-              Nessun risultato ancora. Inserisci i vincoli e premi{" "}
-              <strong>Calcola misure</strong>.
-            </p>
-          )}
+  {!summary && !error && (
+    <p style={styles.helperText}>
+      Nessun risultato ancora. Inserisci i vincoli e premi{" "}
+      <strong>Calcola misure</strong>.
+    </p>
+  )}
 
-          {summary && (
-            <div style={styles.measuresGrid}>
-              <MeasureItem
-                label="I_B(G)"
-                description="Misura drastica (0 = consistente, 1 = inconsistente)"
-                value={summary.mu_drastic}
-              />
-              <MeasureItem
-                label="I_C(G)"
-                description="Numero di vincoli RPC violati"
-                value={summary.mu_violated_constraints}
-              />
-              <MeasureItem
-                label="I_P(G)"
-                description="Numero di coppie problematiche"
-                value={summary.problematic_pairs}
-              />
-              <MeasureItem
-                label="I_M (G)"
-                description="Numero di sottografi minimalmente inconsistenti"
-                value={summary.minimal_problematic_graphs}
-              />
-              <MeasureItem
-                label="I_S (G)"
-                description="Numero di percorsi problematici minimali"
-                value={summary.minimal_problematic_paths}
-              />
-              <MeasureItem
-                label="I_E(G)"
-                description="Numero di archi problematici"
-                value={summary.problematic_edges}
-              />
-              <MeasureItem
-                label="I_L(G)"
-                description="Numero di etichette problematiche"
-                value={summary.problematic_labels}
-              />
-              <MeasureItem
-                label="I_V(G)"
-                description="Numero di vertici problematici"
-                value={summary.problematic_vertices}
-              />
-              <MeasureItem
-                label="I_(E⁻)(G)"
-                description="Archi da rimuovere per ristabilire la coerenza"
-                value={summary.I_E_minus}
-              />
-              <MeasureItem
-                label="I_(E⁺)(G)"
-                description="Archi da aggiungere per ristabilire la coerenza"
-                value={summary.I_E_plus}
-              />
-              <MeasureItem
-                label="I_(V⁻)(G)"
-                description="Vertici da rimuovere per ristabilire la coerenza"
-                value={summary.I_V_minus}
-              />
-            </div>
-          )}
-        </section>
-
+  {summary && (
+    <div style={styles.measuresGrid}>
+      {measureOptions
+        .filter((m) => selectedMeasures.includes(m.id))   // 👈 mostra solo misure selezionate
+        .map((m) => (
+          <MeasureItem
+            key={m.id}
+            label={m.label}
+            description={getMeasureDescription(m.id)}
+            value={summary[m.id] ?? "—"}  // 👈 prende il valore dinamicamente dal backend
+          />
+        ))}
+    </div>
+  )}
+</section>
       </div>
     </div>
   );
