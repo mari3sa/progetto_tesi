@@ -1,3 +1,23 @@
+/**
+ * styles
+ *
+ * Oggetto contenente tutti gli stili inline utilizzati
+ * nell'interfaccia dell'applicazione. Organizzato in sezioni
+ * per mantenere coerenza visiva e modularità.
+ *
+ * Ogni chiave rappresenta una classe logica (es. `page`, `card`, `measureCard`)
+ * da applicare tramite `style={styles.nome}` all'interno dei componenti React.
+ *
+ * Le categorie principali includono:
+ * - Layout generale (page, container)
+ * - Tipografia (title, subtitle, label, code)
+ * - Card e sezioni (card, sectionTitle)
+ * - Gestione grafi (graphPreview, graphImage, graphFallback)
+ * - Schema inspector (schemaRow, tagList, tag, tagWarning)
+ * - Form controls (select, textarea, fileControls)
+ * - Azioni e bottoni (primaryButton, secondaryButton)
+ * - Visualizzazione risultati / misure (measuresGrid, measureCard, measureLabel)
+ */
 const styles = {
   page: {
     minHeight: "100vh",

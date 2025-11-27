@@ -1,3 +1,28 @@
+/**
+ * importConstraintsFromFile
+ *
+ * Importa un file JSON contenente vincoli RPC e aggiorna il testo
+ * multilinea tramite `setConstraintsText`. Supporta **diversi formati**
+ * perché i file possono provenire da backend differenti o da versioni precedenti
+ * dell’applicazione.
+ *
+ * Formati supportati (in ordine di priorità):
+ *
+ * 1️ `{ "constraints": [...] }`
+ * 2️ `{ "payload": { "constraints": [...] } }`
+ * 3️ `{ "model_dump": { "constraints": [...] } }`
+ *
+ * Se nessuna di queste strutture è valida, viene mostrato un messaggio di errore.
+ *
+ * Funzionamento:
+ * - Usa `FileReader` per leggere il file selezionato dall’utente.
+ * - Effettua il parsing JSON.
+ * - Identifica automaticamente il campo che contiene i vincoli.
+ * - Li converte in testo multilinea, separando ogni vincolo con `\n`.
+ *
+ * @param {Event} e - L'evento `onChange` dell’input type="file".
+ * @param {Function} setConstraintsText - Setter React che aggiorna il testo multilinea dei vincoli.
+ */
 export default function importConstraintsFromFile(e, setConstraintsText) {
   const file = e.target.files[0];
   if (!file) return;
