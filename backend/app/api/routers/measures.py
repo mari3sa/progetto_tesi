@@ -15,16 +15,15 @@ router = APIRouter(prefix="/api/measures", tags=["measures"])
 # Modello di richiesta che contiene l'elenco dei vincoli.
 class MeasuresRequest(BaseModel):
     constraints: list[str]
+    requested_measures: list[str] = [] 
 
 #Calcola le misure associate ai vincoli forniti.
 @router.post("/compute")
+
 def measures_compute(req: MeasuresRequest):
-    # Delegazione completa della logica di calcolo al servizio.
     try:
-        return compute_measures(req.constraints)
+        return compute_measures(req.constraints, req.requested_measures)
     except ValueError as e:
-        # Errori legati alla sintassi dei vincoli o a simboli non validi.
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        # Qualsiasi altro errore interno non previsto.
         raise HTTPException(status_code=500, detail=f"Internal error: {e}")
